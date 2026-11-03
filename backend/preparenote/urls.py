@@ -27,6 +27,7 @@ urlpatterns = [
     path("logout/", views.logoutUser, name="logout"),
 
     path("notes/", views.notes, name="notes"),
+    path("notes/public/", views.publicNotes, name="publicNotes"),
     path("notes/<int:note_id>/", views.noteDetail, name="noteDetail"),
 
     path("exams/", exam_views.exams, name="exams")
