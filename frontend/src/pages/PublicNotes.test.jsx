@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import PublicNotes from './PublicNotes.jsx';
 
 const user = { id: 1, username: 'jessy', email: 'jessy@example.com', isModerator: false, token: 'abc123' };
@@ -94,4 +94,117 @@ test('shows an error when the server cannot be reached', async () => {
   render(<PublicNotes user={user} />);
 
   expect(await screen.findByText('Could not connect to the server. Please try again later.')).toBeTruthy();
+});
+
+// Reporting public notes (#22)
+
+function reportServer(reportReply) {
+  return vi.fn((url, options) => {
+    let data = { success: true, notes: sharedNotes };
+    if (options && options.method === 'POST') {
+      data = reportReply;
+    }
+    return Promise.resolve({ json: () => Promise.resolve(data) });
+  });
+}
+
+function findPost() {
+  for (let i = 0; i < fetch.mock.calls.length; i++) {
+    const options = fetch.mock.calls[i][1];
+    if (options && options.method === 'POST') {
+      return fetch.mock.calls[i];
+    }
+  }
+  return null;
+}
+
+async function openReportForm() {
+  render(<PublicNotes user={user} />);
+  const reportButtons = await screen.findAllByRole('button', { name: 'Report' });
+  fireEvent.click(reportButtons[0]);
+}
+
+test('each shared note has a Report button', async () => {
+  globalThis.fetch = reportServer({ success: true });
+
+  render(<PublicNotes user={user} />);
+
+  const reportButtons = await screen.findAllByRole('button', { name: 'Report' });
+  expect(reportButtons.length).toBe(2);
+});
+
+test('reports a note through the API with a reason', async () => {
+  globalThis.fetch = reportServer({ success: true, report: { report_id: 1, note_id: 9, reason: 'Copied from a paid course' } });
+  await openReportForm();
+
+  fireEvent.change(screen.getByLabelText('Why are you reporting this note?'), { target: { value: 'Copied from a paid course' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send Report' }));
+
+  expect(await screen.findByText('Thanks for reporting. A moderator will review this note.')).toBeTruthy();
+  const postCall = findPost();
+  expect(postCall[0]).toBe('/notes/9/report/');
+  expect(postCall[1].headers.Authorization).toBe('Token abc123');
+  expect(JSON.parse(postCall[1].body).reason).toBe('Copied from a paid course');
+});
+
+test('a reported note shows Reported instead of the Report button', async () => {
+  globalThis.fetch = reportServer({ success: true });
+  await openReportForm();
+
+  fireEvent.change(screen.getByLabelText('Why are you reporting this note?'), { target: { value: 'Spam' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send Report' }));
+
+  expect(await screen.findByText('Reported')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Report' }).length).toBe(1);
+  expect(screen.queryByLabelText('Why are you reporting this note?')).toBeNull();
+});
+
+test('asks for a reason before sending a report', async () => {
+  globalThis.fetch = reportServer({ success: true });
+  await openReportForm();
+
+  fireEvent.change(screen.getByLabelText('Why are you reporting this note?'), { target: { value: '   ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send Report' }));
+
+  expect(await screen.findByText('Please tell us why you are reporting this note.')).toBeTruthy();
+  expect(findPost()).toBeNull();
+});
+
+test('cancel closes the report form without sending', async () => {
+  globalThis.fetch = reportServer({ success: true });
+  await openReportForm();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+  expect(screen.queryByLabelText('Why are you reporting this note?')).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Report' }).length).toBe(2);
+  expect(findPost()).toBeNull();
+});
+
+test('notes you already reported stay marked after reloading', async () => {
+  const notes = [{ ...sharedNotes[0], reported: true }, sharedNotes[1]];
+  globalThis.fetch = serverWith({ success: true, notes: notes });
+
+  render(<PublicNotes user={user} />);
+
+  expect(await screen.findByText('Reported')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Report' }).length).toBe(1);
+});
+
+test('shows the error from the server when a report fails', async () => {
+  globalThis.fetch = reportServer({ success: false, error: 'You already reported this note.' });
+  await openReportForm();
+
+  fireEvent.change(screen.getByLabelText('Why are you reporting this note?'), { target: { value: 'Spam' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send Report' }));
+
+  expect(await screen.findByText('Could not report the note: You already reported this note.')).toBeTruthy();
+  expect(screen.queryByText('Reported')).toBeNull();
+});
+
+test('the reason box allows at most 500 characters', async () => {
+  globalThis.fetch = reportServer({ success: true });
+  await openReportForm();
+
+  expect(screen.getByLabelText('Why are you reporting this note?').getAttribute('maxLength')).toBe('500');
 });

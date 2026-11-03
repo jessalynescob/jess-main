@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "preparenote.quickstart.apps.QuickstartConfig",
     "preparenote.exams",
+    "preparenote.reports",
 ]
 
 MIDDLEWARE = [
