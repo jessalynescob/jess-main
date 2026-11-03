@@ -18,7 +18,6 @@ class Note(models.Model):
         choices=StudyStatus.choices,
         default=StudyStatus.LEARNING,
     )
-    source = models.TextField(blank=True, null=True)
     is_public = models.BooleanField(default=False)
     # Where the note lives in the study hierarchy (Exam > Section > Topic > Note).
     # PROTECT stops a topic from being deleted while notes still use it.
