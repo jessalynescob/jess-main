@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from preparenote.quickstart.models import Note
 from preparenote.exams.models import Topic
+from preparenote.reports.models import Report
 
 
 # Create your views here.
@@ -154,10 +155,12 @@ def publicNotes(request):
         .select_related('user', 'topic__section__exam')
         .order_by('-note_id')
     )
+    reported_ids = set(Report.objects.filter(reporter=request.user).values_list('note_id', flat=True))
     note_list = []
     for note in shared_notes:
         note_data = noteToDict(note)
         note_data["topic_name"] = topicName(note.topic)
+        note_data["reported"] = note.note_id in reported_ids
         note_list.append(note_data)
     return Response({"success": True, "notes": note_list})
 
