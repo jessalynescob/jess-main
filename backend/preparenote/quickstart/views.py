@@ -83,8 +83,13 @@ def noteToDict(note):
         "title": note.title,
         "content": note.content,
         "study_status": note.study_status,
+        "is_public": note.is_public,
+        "username": note.user.username,
         "topic_id": note.topic_id,
     }
+
+def readIsPublic(value):
+    return value is True or str(value).lower() == 'true'
 
 def findTopic(topic_id):
     if str(topic_id).isdigit():
@@ -123,17 +128,28 @@ def notes(request):
         if topic is None:
             return Response({"success": False, "error": "Topic not found."}, status=status.HTTP_400_BAD_REQUEST)
 
-    note = Note.objects.create(user=request.user, title=title, content=content, study_status=study_status, topic=topic)
+    is_public = readIsPublic(request.data.get('is_public'))
+    note = Note.objects.create(
+        user=request.user,
+        title=title,
+        content=content,
+        study_status=study_status,
+        is_public=is_public,
+        topic=topic,
+    )
     return Response({"success": True, "note": noteToDict(note)}, status=status.HTTP_201_CREATED)
 
 @api_view(['GET', 'PUT', 'DELETE'])
 def noteDetail(request, note_id):
-    note = Note.objects.filter(note_id=note_id, user=request.user).first()
-    if note is None:
+    note = Note.objects.filter(note_id=note_id).first()
+    if note is None or (note.user != request.user and not note.is_public):
         return Response({"success": False, "error": "Note not found"}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
         return Response({"success": True, "note": noteToDict(note)})
+
+    if note.user != request.user:
+        return Response({"success": False, "error": "You can only change your own notes."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'PUT':
         title = request.data.get('title') or ''
@@ -155,6 +171,8 @@ def noteDetail(request, note_id):
         note.title = title
         note.content = content
         note.study_status = study_status
+        if 'is_public' in request.data:
+            note.is_public = readIsPublic(request.data.get('is_public'))
         note.topic = topic
         note.save()
         return Response({"success": True, "note": noteToDict(note)})
