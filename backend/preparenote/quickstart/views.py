@@ -96,6 +96,11 @@ def findTopic(topic_id):
         return Topic.objects.filter(id=topic_id).first()
     return None
 
+def topicName(topic):
+    if topic is None:
+        return None
+    return topic.section.exam.name + " > " + topic.section.name + " > " + topic.name
+
 def checkNoteData(title, content, study_status):
     if title == '' or content == '':
         return "Title and content are required."
@@ -138,6 +143,23 @@ def notes(request):
         topic=topic,
     )
     return Response({"success": True, "note": noteToDict(note)}, status=status.HTTP_201_CREATED)
+
+# Public notes shared by other users, newest first.
+# Your own public notes are already on your My Notes page.
+@api_view(['GET'])
+def publicNotes(request):
+    shared_notes = (
+        Note.objects.filter(is_public=True)
+        .exclude(user=request.user)
+        .select_related('user', 'topic__section__exam')
+        .order_by('-note_id')
+    )
+    note_list = []
+    for note in shared_notes:
+        note_data = noteToDict(note)
+        note_data["topic_name"] = topicName(note.topic)
+        note_list.append(note_data)
+    return Response({"success": True, "notes": note_list})
 
 @api_view(['GET', 'PUT', 'DELETE'])
 def noteDetail(request, note_id):
